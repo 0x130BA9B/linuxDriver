@@ -1,0 +1,173 @@
+驱动注册使用结构体platform_driver
+在源代码目录下vim include/linux/platform_device,h
+
+struct platform_driver {
+        int (*probe)(struct platform_device *);
+        int (*remove)(struct platform_device *);
+        void (*shutdown)(struct platform_device *);
+        int (*suspend)(struct platform_device *, pm_message_t state);
+        int (*resume)(struct platform_device *);
+        struct device_driver driver;
+        const struct platform_device_id *id_table;
+};
+
+device_driver数据结构的两个参数：
+	-name 和注册的设备name要保持一致
+	-owner 一般赋值THIS_MODULE
+
+示例：
+struct platform_driver hello_driver = {
+	.probe = hello_probe,
+	.remove = hello_remove,
+	.shutdown = hello_shutdown,
+	.suspend = hello_suspend,
+	.resume = hello_resume,
+	.driver = {
+		.name = DRIVER_NAME,
+		.owner = THIS_MODULE,
+	}
+};
+
+驱动注册卸载函数：参数为platform_driver结构体
+extern int platform_driver_register(struct platform_driver *);
+extern void platform_driver_unregister(struct platform_driver *);
+
+示例：
+DriverState = platform_driver_register(&hello_driver);
+printk(KERN_EMERG "\tDriverState is %d\n",DriverState);
+
+platform_driver_unregister(&hello_driver);	
+
+
+驱动的几种常见状态：初始化、移除、休眠、复位
+probe：platform_match函数匹配成功后，驱动调用的初始化函数
+remove：移除驱动函数
+suspend：悬挂（休眠）驱动函数
+resume：休眠后恢复驱动
+
+示例：
+static int hello_probe(struct platform_device *pdv){
+	
+	printk(KERN_EMERG "\tinitialized\n");
+	
+	return 0;
+}
+
+
+probe_linux_module.c源代码：
+
+#include <linux/init.h>
+#include <linux/module.h>
+
+#include <linux/platform_device.h>
+
+#define DRIVER_NAME "hello_ctl"
+
+MODULE_LICENSE("Dual BSD/GPL");
+MODULE_AUTHOR("lx");
+
+static int hello_probe(struct platform_device *pdv){
+	
+	printk(KERN_EMERG "\tinitialized\n");
+	
+	return 0;
+}
+
+static int hello_remove(struct platform_device *pdv){
+	
+	return 0;
+}
+
+static void hello_shutdown(struct platform_device *pdv){
+	
+	;
+}
+
+static int hello_suspend(struct platform_device *pdv){
+	
+	return 0;
+}
+
+static int hello_resume(struct platform_device *pdv){
+	
+	return 0;
+}
+
+struct platform_driver hello_driver = {
+	.probe = hello_probe,
+	.remove = hello_remove,
+	.shutdown = hello_shutdown,
+	.suspend = hello_suspend,
+	.resume = hello_resume,
+	.driver = {
+		.name = DRIVER_NAME,
+		.owner = THIS_MODULE,
+	}
+};
+
+static int hello_init(void)
+{
+	int DriverState;
+	
+	printk(KERN_EMERG "HELLO WORLD enter!\n");
+	DriverState = platform_driver_register(&hello_driver);
+	
+	printk(KERN_EMERG "\tDriverState is %d\n",DriverState);
+	return 0;
+}
+
+static void hello_exit(void)
+{
+	printk(KERN_EMERG "HELLO WORLD exit!\n");
+	
+	platform_driver_unregister(&hello_driver);	
+}
+
+module_init(hello_init);
+module_exit(hello_exit);
+
+
+Makefile文件：
+
+#!/bin/bash
+
+#通知编译器我们要编译模块的哪些源码
+
+obj-m += probe_linux_module.o 
+
+
+
+#源码目录变量，这里用户需要根据实际情况选择路径
+
+#作者是将Linux的源码拷贝到目录/home/topeet/android4.0下并解压的
+
+KDIR := /home/topeet/android4.0/iTop4412_Kernel_3.0
+
+
+
+#当前目录变量
+
+PWD ?= $(shell pwd)
+
+
+
+#make命名默认寻找第一个目标
+
+#make -C就是指调用执行的路径
+
+#$(KDIR)Linux源码目录，作者这里指的是/home/topeet/android4.0/iTop4412_Kernel_3.0
+
+#$(PWD)当前目录变量
+#modules要执行的操作
+
+all:
+
+	make -C $(KDIR) M=$(PWD) modules
+		
+
+#make clean执行的操作是删除后缀为o的文件
+
+clean:
+
+	rm -rf *.o
+
