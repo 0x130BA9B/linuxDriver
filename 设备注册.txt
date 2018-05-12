@@ -1,0 +1,52 @@
+设备注册使用结构体platform_device
+内核源码下 vim include/linux/platform_device.h查看
+
+注册设备使用的结构体platform_device
+struct platform_device {
+        const char      * name;  //设备名称。和驱动名称匹配才会进入probe函数
+        int             id;// 用于插入总线并且具有相同name的设备编号，如果之一有个设备那么-1
+        struct device   dev; //结构体中内嵌的device结构体
+        u32             num_resources;// 设备使用资源的数量
+        struct resource * resource;//设备使用的资源数组
+
+        const struct platform_device_id *id_entry;
+
+        /* MFD cell pointer */
+        struct mfd_cell *mfd_cell;
+
+        /* arch specific additions */
+        struct pdev_archdata    archdata;
+};
+
+
+内核源码下vim arch/arm/mach-exynos/mach-itop4412.c
+/leds仿写leds 
+
+#ifdef CONFIG_HELLO_CTL		//在Kconfig中已定义CONFIG_HELLO_CTL
+struct platform_device s3c_device_hello_ctl = {
+        .name   = "leds",
+        .id             = -1,
+};
+#endif
+ 
+注册完结构体还需要导入到内核设备结构链表中
+再次搜索leds 
+#ifdef CONFIG_HELLO_CTL
+        &s3c_device_hello_ctl,
+#endif
+
+在make menuconfig中选择编译Enable HELLO config后，就会有CONFIG_HELLO_CTL这个宏定义
+
+make zImage编译内核
+
+将编译好的zimage文件放入USB_fastboot_tool/platform-tools中
+启动开发板进入uboot
+输入fastboot连接工具
+打开platform-tools中的cmd
+
+cmd中输入fastboot.exe flash kernel zImage只进行内核烧写
+cmd中输入fastboot.exe reboot
+
+在开发板中ls /sys/devices/platform
+出现hello_ctl
+完成设备注册
