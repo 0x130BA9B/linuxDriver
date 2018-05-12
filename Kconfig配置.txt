@@ -1,0 +1,21 @@
+内核源码目录下drivers/char/Kconfig
+输入/LEDS查找LEDS相关配置项
+在LEDS_CTL后添加HELLO_CTL
+
+1:tristate可选为模块编译进内核
+config HELLO_CTL
+	tristate "Enable HELLO config"
+	defult y
+	help
+	  Enable HELLO config
+
+
+2.bool只能选择编译或不编译进内核无法以模块方式
+config HELLO_CTL
+	bool "Enable HELLO config"
+	defult y
+	help
+	  Enable HELLO config
+
+保存退出
+执行make menuconfig配置查看.config文件是否改变
