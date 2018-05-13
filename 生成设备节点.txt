@@ -1,0 +1,313 @@
+生成设备节点：
+杂项设备：一部分字符设备的封装，一部分不好归类的驱动（主设备号为10，通过次设备号区分）
+
+引入杂项设备的目的：
+	1.节省主设备号
+	2.驱动写起来相对简单
+	（如果使用封装好的杂项设备，那么就可以减少一步注册主设备号的过程）
+
+杂项设备初始化部分源文件：drivers/char/misc.c
+	由Makefile可知该部分强制编译，由linux官方自带，为了简单的驱动更容易实现
+
+杂项设备注册头文件：include/linux/miscdevice.h
+
+struct miscdevice  {
+
+	int minor;
+ //设备号 （一般使用宏定义MISC_DYNAMIC_MINOR自动分配）
+	const char *name;
+ //生成设备节点名称 
+	const struct file_operations *fops; //指向一个设备节点文件
+  	struct list_head list;
+
+	struct device *parent;
+
+	struct device *this_device;
+
+	const char *nodename;
+
+	mode_t mode;
+
+};
+
+示例：
+static  struct miscdevice hello_dev = {
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = DEVICE_NAME,
+	.fops = &hello_ops,
+};
+
+
+
+extern int misc_register(struct miscdevice * misc);
+
+extern int misc_deregister(struct miscdevice *misc);
+示例：
+	misc_register(&hello_dev);
+	misc_deregister(&hello_dev);
+
+内核文件结构体：
+linux中一切皆文件，上层调用底层也是通过读取文件的方式
+注册设备节点，本质也是新建一个特殊的文件，包含文件名，打开，关闭，操作等函数
+头文件为：include/linux/fs.h
+
+struct file_operations {
+
+	struct module *owner;
+	loff_t (*llseek) (struct file *, loff_t, int);
+
+	ssize_t (*read) (struct file *, char __user *, size_t, loff_t *);
+
+	ssize_t (*write) (struct file *, const char __user *, size_t, loff_t *);
+
+	ssize_t (*aio_read) (struct kiocb *, const struct iovec *, unsigned long, loff_t);
+
+	ssize_t (*aio_write) (struct kiocb *, const struct iovec *, unsigned long, loff_t);
+
+	int (*readdir) (struct file *, void *, filldir_t);
+
+	unsigned int (*poll) (struct file *, struct poll_table_struct *);
+
+/* remove by cym 20130408 support for MT660.ko */
+
+#if 0
+
+//#ifdef CONFIG_SMM6260_MODEM
+
+#if 1// liang, Pixtree also need to use ioctl interface...
+
+	int (*ioctl) (struct inode *, struct file *, unsigned int, unsigned long);
+
+#endif
+
+#endif
+
+/* end remove */
+
+	long (*unlocked_ioctl) (struct file *, unsigned int, unsigned long);
+
+	long (*compat_ioctl) (struct file *, unsigned int, unsigned long);
+
+	int (*mmap) (struct file *, struct vm_area_struct *);
+
+	int (*open) (struct inode *, struct file *);
+
+	int (*flush) (struct file *, fl_owner_t id);
+
+	int (*release) (struct inode *, struct file *);
+
+	int (*fsync) (struct file *, int datasync);
+
+	int (*aio_fsync) (struct kiocb *, int datasync);
+	int (*fasync) (int, struct file *, int);
+
+	int (*lock) (struct file *, int, struct file_lock *);
+
+	ssize_t (*sendpage) (struct file *, struct page *, int, size_t, loff_t *, int);
+
+	unsigned long (*get_unmapped_area)(struct file *, unsigned long, unsigned long, unsigned long, unsigned long);
+
+	int (*check_flags)(int);
+
+	int (*flock) (struct file *, int, struct file_lock *);
+
+	ssize_t (*splice_write)(struct pipe_inode_info *, struct file *, loff_t *, size_t, unsigned int);
+
+	ssize_t (*splice_read)(struct file *, loff_t *, struct pipe_inode_info *, size_t, unsigned int);
+
+	int (*setlease)(struct file *, long, struct file_lock **);
+
+	long (*fallocate)(struct file *file, int mode, loff_t offset,
+loff_t len);
+
+/* add by cym 20130408 support for MT6260 and Pixtree */
+
+#if defined(CONFIG_SMM6260_MODEM) || defined(CONFIG_USE_GPIO_AS_I2C)
+
+	int (*ioctl) (struct inode *, struct file *, unsigned int, unsigned long);
+
+#endif
+
+/* end add */
+
+};
+
+file_operations参数很多根据需求选择
+必选参数：
+	.owner一般是THIS_MODULE,
+	.open打开文件
+	.release关闭文件 
+	.unlocked_ioctl对GPIO的操作，应用向底层驱动传值
+示例：
+
+static struct file_operations hello_ops = {
+	.owner = THIS_MODULE,
+	.open = hello_open,
+	.release = hello_release,
+	.unlocked_ioctl = hello_ioctl,
+};
+
+static int hello_open(struct inode *inode, struct file *file){
+	printk(KERN_EMERG "hello open\n");
+	return 0;
+}
+
+
+
+开发板加载驱动
+在/dev查看是否生成设备节点
+ls /dev
+
+
+devicenode_linux_module.c源代码
+#include <linux/init.h>
+#include <linux/module.h>
+
+/*驱动注册的头文件，包含驱动的结构体和注册和卸载的函数*/
+#include <linux/platform_device.h>
+/*注册杂项设备头文件*/
+#include <linux/miscdevice.h>
+/*注册设备节点的文件结构体*/
+#include <linux/fs.h>
+
+#define DRIVER_NAME "hello_ctl"
+#define DEVICE_NAME "hello_ctl123"
+MODULE_LICENSE("Dual BSD/GPL");
+MODULE_AUTHOR("lx");
+
+static long hello_ioctl( struct file *files, unsigned int cmd, unsigned long arg){
+
+	
+	printk("cmd is %d,arg is %d\n",cmd,arg);
+	return 0;
+}
+
+static int hello_release(struct inode *inode, struct file *file){
+	printk(KERN_EMERG "hello release\n");
+	return 0;
+}
+
+static int hello_open(struct inode *inode, struct file *file){
+	printk(KERN_EMERG "hello open\n");
+	return 0;
+}
+
+static struct file_operations hello_ops = {
+	.owner = THIS_MODULE,
+	.open = hello_open,
+	.release = hello_release,
+	.unlocked_ioctl = hello_ioctl,
+};
+
+static  struct miscdevice hello_dev = {
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = DEVICE_NAME,
+	.fops = &hello_ops,
+};
+
+
+static int hello_probe(struct platform_device *pdv){
+	
+	printk(KERN_EMERG "\tinitialized\n");
+	misc_register(&hello_dev);
+	
+	return 0;
+}
+
+static int hello_remove(struct platform_device *pdv){
+	
+	printk(KERN_EMERG "\tremove\n");
+	misc_deregister(&hello_dev);
+	return 0;
+}
+
+static void hello_shutdown(struct platform_device *pdv){
+	
+	;
+}
+
+static int hello_suspend(struct platform_device *pdv,pm_message_t pmt){
+	
+	return 0;
+}
+
+static int hello_resume(struct platform_device *pdv){
+	
+	return 0;
+}
+
+struct platform_driver hello_driver = {
+	.probe = hello_probe,
+	.remove = hello_remove,
+	.shutdown = hello_shutdown,
+	.suspend = hello_suspend,
+	.resume = hello_resume,
+	.driver = {
+		.name = DRIVER_NAME,
+		.owner = THIS_MODULE,
+	}
+};
+
+
+static int hello_init(void)
+{
+	int DriverState;
+	
+	printk(KERN_EMERG "HELLO WORLD enter!\n");
+	DriverState = platform_driver_register(&hello_driver);
+	
+	printk(KERN_EMERG "\tDriverState is %d\n",DriverState);
+	return 0;
+}
+
+
+static void hello_exit(void)
+{
+	printk(KERN_EMERG "HELLO WORLD exit!\n");
+	
+	platform_driver_unregister(&hello_driver);	
+}
+
+module_init(hello_init);
+module_exit(hello_exit);
+
+
+Makefile文件：
+#!/bin/bash
+
+#通知编译器我们要编译模块的哪些源码
+
+obj-m += devicenode_linux_module.o 
+
+
+#源码目录变量，这里用户需要根据实际情况选择路径
+
+#作者是将Linux的源码拷贝到目录/home/topeet/android4.0下并解压的
+
+KDIR := /home/topeet/android4.0/iTop4412_Kernel_3.0
+
+
+#当前目录变量
+
+PWD ?= $(shell pwd)
+
+
+#make命名默认寻找第一个目标
+
+#make -C就是指调用执行的路径
+
+#$(KDIR)Linux源码目录，作者这里指的是/home/topeet/android4.0/iTop4412_Kernel_3.0
+
+#$(PWD)当前目录变量
+#modules要执行的操作
+
+all:
+
+	make -C $(KDIR) M=$(PWD) modules
+
+#make clean执行的操作是删除后缀为o的文件
+
+clean:
+
+	rm -rf *.o
+
