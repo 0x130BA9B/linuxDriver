@@ -1,0 +1,360 @@
+﻿头文件
+• Linux中申请GPIO的头文件
+– include/linux/gpio.h
+
+static inline int gpio_request(unsigned gpio, const char *label)
+
+{
+	
+	return -ENOSYS;
+
+}
+
+static inline void gpio_free(unsigned gpio)
+
+{
+	
+	might_sleep();
+
+
+	/* GPIO can never have been requested */
+
+	WARN_ON(1);
+
+}
+
+
+1.设置一个引脚的电平状态
+
+static inline void gpio_set_value(unsigned gpio, int value)
+
+第一个参数gpio为指定的引脚，第二个参数value为要设置的高低电平
+
+2.获得一个引脚的电平状态
+
+static inline int gpio_get_value(unsigned gpio)
+
+第一个参数为gpio为指定的引脚，会返回一个电平状态
+
+讲了上面这些我们基本能控制一个io了，现在我在介绍一种方法，这种方法只能进行输入和输出不能进行io的复用配置
+
+1.io输出
+
+static inline int gpio_direction_output(unsigned gpio, int value)
+
+第一个参数gpio为指定的引脚，第二个参数为电平状态
+
+2.io输入
+
+static inline int gpio_direction_input(unsigned gpio)
+
+第一个参数gpio为指定的引脚，会返回一个电平状态
+
+
+
+• 三星平台的GPIO配置函数头文件
+–	arch/arm/plat-samsung/include/plat/gpio-cfg.h
+–	包括三星所有处理器的配置函数
+• 三星平台EXYNOS系列平台，GPIO配置参数宏定义头文件
+
+设置单一io口
+
+int s3c_gpio_cfgpin(unsigned int pin, unsigned int to);
+
+里面有两个参数，第一个pin是选择哪个引脚，第二个参数有三种定义:
+
+/* Defines for generic pin configurations */
+
+#define S3C_GPIO_INPUT	(S3C_GPIO_SPECIAL(0))
+
+#define S3C_GPIO_OUTPUT	(S3C_GPIO_SPECIAL(1))
+
+#define S3C_GPIO_SFN(x)	(S3C_GPIO_SPECIAL(x))复用功能选择
+
+以GPE0为例查找datasheet Description：
+0000=Input	0001=Output	0010=PCM SCLK[1]	0011=I2S CLK[1]
+0100=AC97 BITCLK	0101=Reserved	0110=Reserved	0111=Reserved
+其中的参数x就是对应上表的复用功能，当x=0时是输入功能，x=1时是输出功能
+这个例子s3c_gpio_cfgpin(S3C64XX_GPE(0), S3C_GPIO_SFN(1));说明GPE0口配置为输出模式。
+
+1.获取io口的配置
+unsigned s3c_gpio_getcfg(unsigned int pin);这个函数跟上面讲到的刚好相反，是读取当前一个io口的配置，pin参数是要获得的引脚配置，函数会返回一个相应的值
+
+
+2.设置一组io
+int s3c_gpio_cfgpin_range(unsigned int start, unsigned int nr, unsigned int cfg); 
+
+第一个参数start是开始的引脚，第二个nr是从start开始到第一个，注意配置的io必须是同一组的io，第三个cfg是配置状态
+
+
+3.设置单一io的上拉电阻
+
+int s3c_gpio_setpull(unsigned int pin, s3c_gpio_pull_t pull); 
+
+设置单个io为不同的上拉模式，模式分别为
+
+S3C_GPIO_PULL_NONE
+
+S3C_GPIO_PULL_DOWN
+
+S3C_GPIO_PULL_UP
+
+
+4.获取io口的上拉电阻配置
+
+s3c_gpio_pull_t s3c_gpio_getpull(unsigned int pin);
+
+获取单个io的上拉配置状态，会返回一个配置模式
+
+
+5.设置一组io(包括上拉电阻)
+
+int s3c_gpio_cfgall_range(unsigned int start, unsigned int nr, unsigned int cfg, s3c_gpio_pull_t pull);
+
+
+–	arch/arm/mach-exynos/include/mach/gpio.h
+
+
+
+• 三星平台4412平台，GPIO宏定义头文件。已经包含在头文件gpio.h中
+–	arch/arm/mach-exynos/include/mach/gpio-exynos4.h
+–	包括4412处理器所有的GPIO的宏定义
+ #define EXYNOS4_GPL2(_nr)	(EXYNOS4_GPIO_L2_START + (_nr))等
+ 
+
+
+
+
+
+ linuxGPIO申请函数和赋值函数
+–	gpio_request
+–	gpio_set_value
+•	三星平台配置GPIO函数
+–	s3c_gpio_cfgpin
+•	GPIO配置输出模式的宏变量
+–	S3C_GPIO_OUTPUT
+
+
+
+代码编写完成后将内核中led驱动去掉重新编译内核
+arm-none-linux-gnueabi-gcc -o invoke_leds invoke_leds.c -static
+
+leds.c源文件
+
+#include <linux/init.h>
+#include <linux/module.h>
+
+/*驱动注册的头文件，包含驱动的结构体和注册和卸载的函数*/
+#include <linux/platform_device.h>
+/*注册杂项设备头文件*/
+#include <linux/miscdevice.h>
+/*注册设备节点的文件结构体*/
+#include <linux/fs.h>
+
+/*Linux中申请GPIO的头文件*/
+#include <linux/gpio.h>
+/*三星平台的GPIO配置函数头文件*/
+/*三星平台EXYNOS系列平台，GPIO配置参数宏定义头文件*/
+#include <plat/gpio-cfg.h>
+#include <mach/gpio.h>
+/*三星平台4412平台，GPIO宏定义头文件*/
+#include <mach/gpio-exynos4.h>
+
+#define DRIVER_NAME "hello_ctl"
+#define DEVICE_NAME "hello_ctl"
+
+
+MODULE_LICENSE("Dual BSD/GPL");
+MODULE_AUTHOR("lx");
+
+static long hello_ioctl( struct file *files, unsigned int cmd, unsigned long arg){
+	printk("cmd is %d,arg is %d\n",cmd,arg);
+	
+	if(cmd > 1){
+		printk(KERN_EMERG "cmd is 0 or 1\n");
+	}
+	if(arg > 1){
+		printk(KERN_EMERG "arg is only 1\n");
+	}
+	
+	gpio_set_value(EXYNOS4_GPL2(0),cmd);
+	
+	return 0;
+}
+
+static int hello_release(struct inode *inode, struct file *file){
+	printk(KERN_EMERG "hello release\n");
+	return 0;
+}
+
+static int hello_open(struct inode *inode, struct file *file){
+	printk(KERN_EMERG "hello open\n");
+	return 0;
+}
+
+static struct file_operations hello_ops = {
+	.owner = THIS_MODULE,
+	.open = hello_open,
+	.release = hello_release,
+	.unlocked_ioctl = hello_ioctl,
+};
+
+static  struct miscdevice hello_dev = {
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = DEVICE_NAME,
+	.fops = &hello_ops,
+};
+
+
+static int hello_probe(struct platform_device *pdv){
+	int ret;
+	
+	printk(KERN_EMERG "\tinitialized\n");
+	
+	ret = gpio_request(EXYNOS4_GPL2(0),"LEDS");
+	if(ret < 0){
+		printk(KERN_EMERG "gpio_request EXYNOS4_GPL2(0) failed!\n");
+		return ret;
+	}
+	
+	s3c_gpio_cfgpin(EXYNOS4_GPL2(0),S3C_GPIO_OUTPUT);
+	
+	gpio_set_value(EXYNOS4_GPL2(0),0);
+	
+	misc_register(&hello_dev);
+	
+	return 0;
+}
+
+static int hello_remove(struct platform_device *pdv){
+	
+	printk(KERN_EMERG "\tremove\n");
+	misc_deregister(&hello_dev);
+	return 0;
+}
+
+static void hello_shutdown(struct platform_device *pdv){
+	
+	;
+}
+
+static int hello_suspend(struct platform_device *pdv,pm_message_t pmt){
+	
+	return 0;
+}
+
+static int hello_resume(struct platform_device *pdv){
+	
+	return 0;
+}
+
+struct platform_driver hello_driver = {
+	.probe = hello_probe,
+	.remove = hello_remove,
+	.shutdown = hello_shutdown,
+	.suspend = hello_suspend,
+	.resume = hello_resume,
+	.driver = {
+		.name = DRIVER_NAME,
+		.owner = THIS_MODULE,
+	}
+};
+
+
+static int hello_init(void)
+{
+	int DriverState;
+	
+	printk(KERN_EMERG "HELLO WORLD enter!\n");
+	DriverState = platform_driver_register(&hello_driver);
+	
+	printk(KERN_EMERG "\tDriverState is %d\n",DriverState);
+	return 0;
+}
+
+
+static void hello_exit(void)
+{
+	printk(KERN_EMERG "HELLO WORLD exit!\n");
+	
+	platform_driver_unregister(&hello_driver);	
+}
+
+module_init(hello_init);
+module_exit(hello_exit);
+
+
+
+invoke_leds.c源文件：
+#include <stdio.h>
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+
+main(){
+	int fd;
+	char *hello_node = "/dev/hello_ctl";
+	
+/*O_RDWR只读打开,O_NDELAY非阻塞方式*/	
+	if((fd = open(hello_node,O_RDWR|O_NDELAY))<0){
+		printf("APP open %s failed",hello_node);
+	}
+	else{
+		printf("APP open %s success",hello_node);
+		ioctl(fd,1,1);
+		sleep(3);
+		ioctl(fd,0,1);
+		sleep(3);
+		ioctl(fd,1,1);
+	}
+	
+	close(fd);
+}
+
+Makefile文件：
+
+#!/bin/bash
+
+#通知编译器我们要编译模块的哪些源码
+
+obj-m += leds.o 
+
+
+
+#源码目录变量，这里用户需要根据实际情况选择路径
+
+#作者是将Linux的源码拷贝到目录/home/topeet/android4.0下并解压的
+
+KDIR := /home/topeet/android4.0/iTop4412_Kernel_3.0
+
+
+
+#当前目录变量
+
+PWD ?= $(shell pwd)
+
+
+
+#make命名默认寻找第一个目标
+
+#make -C就是指调用执行的路径
+
+#$(KDIR)Linux源码目录，作者这里指的是/home/topeet/android4.0/iTop4412_Kernel_3.0
+
+#$(PWD)当前目录变量
+#modules要执行的操作
+
+all:
+
+	make -C $(KDIR) M=$(PWD) modules
+		
+
+#make clean执行的操作是删除后缀为o的文件
+
+clean:
+
+	rm -rf *.o
+
