@@ -1,0 +1,56 @@
+以HELLO_CTL123设备节点为例使用简单应用调用驱动
+
+所需头文件：
+打印头文件include<stdio.h>
+应用中调用文件需要的头文件
+基本系统数据类型。
+系统的基本数据类型在 32 编译环境中保持为 32 位值,
+并会在 64 编译环境中增长为 64 位值。 
+#include <sys/types.h>
+系统调用函数头文件。
+可以调用普通文件，目录，管道，socket，字符，块的属性
+#include <sys/stat.h>
+定义了open函数
+#include <fcntl.h>
+定义了close函数
+#include <unistd.h>
+定义了ioctl函数
+#include <sys/ioctl.h>
+
+调用头文件和编译器在同一目录下
+这里使用arm2009q3编译器，编译器使用arm-none-linux-gnueabi-gcc
+vim .bashrc最后一行查看之前配置的编译器环境变量位置
+切换到该位置后find ./ -name types.h (在当前目录下查找types.h)
+
+
+编写应用程序的代码后，使用如下命令编译：
+arm-none-linux-gnueabi-gcc -o invoke_hello invoke_hello.c -static
+
+在开发板中加载devicenode_linux_module驱动后再运行应用
+
+
+invoke_hello.c源代码：
+
+#include <stdio.h>
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+
+main(){
+	int fd;
+	char *hello_node = "/dev/hello_ctl123";
+	
+/*O_RDWR只读打开,O_NDELAY非阻塞方式*/	
+	if((fd = open(hello_node,O_RDWR|O_NDELAY))<0){
+		printf("APP open %s failed",hello_node);
+	}
+	else{
+		printf("APP open %s success",hello_node);
+		ioctl(fd,1,6);
+	}
+	
+	close(fd);
+}
