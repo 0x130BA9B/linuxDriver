@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 头文件：include/linux/moduleparam.h
 
 内核模块可以通过module_param来传单个参数
@@ -117,3 +118,124 @@ all:
 #make clean执行的操作是删除后缀为o的文件
 clean:
 	rm -rf *.mod.c *.o *.order *.ko *.mod.o *.symvers
+=======
+头文件：include/linux/moduleparam.h
+
+内核模块可以通过module_param来传单个参数
+module_param(name,type,perm)
+name：模块参数的名称
+type： 模块参数的数据类型（支持int long short uint ulong ushort类型）
+perm： 模块参数的访问权限（S_IRUSR参数表示所有文件所有者可读）
+示例：module_param(module_arg1,int,S_IRUSR);
+
+
+传递多个参数module_param_array(name, type, nump, perm)
+name：模块参数的名称
+type： 模块参数的数据类型（支持int long short uint ulong ushort类型）
+nump：保存参数个数的地址
+perm： 模块参数的访问权限（S_IRUSR参数表示所有文件所有者可读）
+示例：module_param_array(int_array,int,&int_num,S_IRUSR);
+
+
+参数perm表示此参数在sysfs文件系统中所对应的文件节点的属性，其权限在 include/linux/stat.h中有定义。
+变量perm
+#defineS_IRUSR 00400文件所有者可读
+#defineS_IWUSR00200文件所有者可写
+#defineS_IXUSR 00100文件所有者可执行
+#defineS_IRGRP00040与文件所有者同组的用户可读
+#defineS_IWGRP00020
+#defineS_IXGRP 00010
+#defineS_IROTH 00004与文件所有者不同组的用户可读
+#defineS_IWOTH00002
+#defineS_IXOTH 00001
+将数字最后三位转化为二进制:xxx xxx xxx,高位往低位依次看,
+第一位为1表示文件所有者可读,第二位为1表示文件所有者可写,
+第三位为1表示文件所有者可执行;接下来三位表示文件所有者同组成员的权限;
+再下来三位为不同组用户权限
+
+
+insmod module_param.ko module_arg1=10 module_arg2=20 int_array=11,12,13,14,15,16,17,18
+cat /sys/module/module_param/parameters/xxx 可以查询参数
+
+
+
+module_param.c源文件：
+
+#include <linux/init.h>
+/*包含初始化宏定义的头文件,代码中的module_init和module_exit在此文件中*/
+#include <linux/module.h>
+/*包含初始化加载模块的头文件,代码中的MODULE_LICENSE在此头文件中*/
+
+/*定义module_param module_param_array的头文件*/
+#include <linux/moduleparam.h>
+/*定义module_param module_param_array中perm的头文件*/
+#include <linux/stat.h>
+
+
+MODULE_LICENSE("Dual BSD/GPL");
+/*声明是开源的，没有内核版本限制*/
+MODULE_AUTHOR("lx");
+/*声明作者*/
+
+static int module_arg1,module_arg2;
+static int int_array[50];
+static int int_num;
+
+module_param(module_arg1,int,S_IRUSR);
+
+module_param(module_arg2,int,S_IRUSR);
+
+module_param_array(int_array,int,&int_num,S_IRUSR);
+
+
+static int hello_init(void)
+{
+	int i;
+	
+	printk(KERN_EMERG "module_arg1 is %d!\n",module_arg1);
+	printk(KERN_EMERG "module_arg2 is %d!\n",module_arg2);
+	
+	for(i=0;i<int_num;i++){
+		printk(KERN_EMERG "int_array[%d] is %d!\n",i,int_array[i]);
+	}
+		
+	printk(KERN_EMERG "Hello World enter!\n");
+	/*打印信息，KERN_EMERG表示紧急信息*/
+	return 0;
+}
+
+static void hello_exit(void)
+{
+	printk(KERN_EMERG "Hello world exit!\n");
+}
+
+
+module_init(hello_init);
+/*初始化函数*/
+module_exit(hello_exit);
+/*卸载函数*/
+
+Makefile文件：
+#!/bin/bash
+#通知编译器我们要编译模块的哪些源码
+obj-m += module_param.o 
+
+#源码目录变量，这里用户需要根据实际情况选择路径
+#作者是将Linux的源码拷贝到目录/home/topeet/android4.0下并解压的
+KDIR := /home/topeet/android4.0/iTop4412_Kernel_3.0
+
+#当前目录变量
+PWD ?= $(shell pwd)
+
+#make命名默认寻找第一个目标
+#make -C就是指调用执行的路径
+#$(KDIR)Linux源码目录，作者这里指的是/home/topeet/android4.0/iTop4412_Kernel_3.0
+#$(PWD)当前目录变量
+#modules要执行的操作
+all:
+	make -C $(KDIR) M=$(PWD) modules
+		
+#make clean执行的操作是删除后缀为o的文件
+clean:
+	rm -rf *.mod.c *.o *.order *.ko *.mod.o *.symvers
+>>>>>>> bd47a8ef31c6157ebfc3624da1c077f07d88c5d4
