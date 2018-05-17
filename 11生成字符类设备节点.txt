@@ -1,0 +1,237 @@
+前面介绍设备中的模型：bus，device，driver，都是有比较明确的定义。
+bus代表总线，device代表实际的设备和接口，driver代表驱动。
+
+class是设备类，它是一个抽象的概念，没有对应的实体。
+它是提供给用户接口相似的一类设备的集合。
+常见的有输入子系统input、usb、串口tty、块设备block、杂项设备等
+ls /sys/class查看系统中设备类
+
+?函数class_create创建class类文件
+–参数1：一般是THIS_MODULE
+–参数2：设备名称
+–创建一个设备类，用于设备节点文件的创建
+–返回一个class结构体变量
+
+? class结构体变量
+–class是设备驱动模型中通用的设备类结构
+–在头文件include/linux/device.h的280行
+
+? 老版本：创建设备class函数class_device_create
+–头文件include/linux/device.h中
+–参数1：class结构体变量
+–参数2：父设备NULL
+–参数3：dev_t设备号
+–参数4：数据NULL
+–参数5：设备节点名称
+
+? 释放设备class函数class_destroy
+extern void class_destroy(struct class *cls);
+–参数1：myclass
+
+? 创建设备节点函数device_create
+–头文件include/linux/device.h中
+–参数1：设备所属于的类
+–参数2：设备的父设备，NULL
+–参数3：设备号
+–参数4：设备数据，NULL
+–参数5：设备名称
+
+? 摧毁设备节点函数device_destroy
+– 参数1：设备所属于的类 – 参数2：设备号
+
+? 释放内存函数kfree
+–参数1：数据指针
+
+? 加载模块“create_cnode.ko”
+–使用命令“ls /sys/class/”可以查看到生成的class
+–使用命令“ls /dev”可以查看到生成的两个设备节点
+
+加载模块的时候还可以使用命令生成设备节点命令，例如
+–#mknod dev/test0 c 249 0
+–#mknod dev/test1 c 249 1
+仍需要驱动代码支持否则无效
+
+create_cnode.c源文件：
+
+/*包含初始化宏定义的头文件,代码中的module_init和module_exit在此文件中*/
+#include <linux/init.h>
+/*包含初始化加载模块的头文件,代码中的MODULE_LICENSE在此头文件中*/
+#include <linux/module.h>
+/*定义module_param module_param_array的头文件*/
+#include <linux/moduleparam.h>
+/*定义module_param module_param_array中perm的头文件*/
+#include <linux/stat.h>
+/*三个字符设备函数*/
+#include <linux/fs.h>
+/*MKDEV转换设备号数据类型的宏定义*/
+#include <linux/kdev_t.h>
+/*定义字符设备的结构体*/
+#include <linux/cdev.h>
+/*分配内存空间函数头文件*/
+#include <linux/slab.h>
+
+/*包含函数device_create 结构体class等头文件*/
+#include <linux/device.h>
+
+#define DEVICE_NAME "chardevnode"
+#define DEVICE_MINOR_NUM 2
+#define DEV_MAJOR 0
+#define DEV_MINOR 0
+#define REGDEV_SIZE 3000
+
+MODULE_LICENSE("Dual BSD/GPL");
+/*声明是开源的，没有内核版本限制*/
+MODULE_AUTHOR("iTOPEET_dz");
+/*声明作者*/
+
+int numdev_major = DEV_MAJOR;
+int numdev_minor = DEV_MINOR;
+
+/*输入主设备号*/
+module_param(numdev_major,int,S_IRUSR);
+/*输入次设备号*/
+module_param(numdev_minor,int,S_IRUSR);
+
+static struct class *myclass;
+
+struct reg_dev
+{
+	char *data;
+	unsigned long size;
+	
+	struct cdev cdev;
+};
+struct reg_dev *my_devices;
+
+struct file_operations my_fops = {
+	.owner = THIS_MODULE,
+};
+
+
+/*设备注册到系统*/
+static void reg_init_cdev(struct reg_dev *dev,int index){
+	int err;
+	int devno = MKDEV(numdev_major,numdev_minor+index);
+	
+	/*数据初始化*/
+	cdev_init(&dev->cdev,&my_fops);
+	dev->cdev.owner = THIS_MODULE;
+	dev->cdev.ops = &my_fops;
+	
+	/*注册到系统*/
+	err = cdev_add(&dev->cdev,devno,1);
+	if(err){
+		printk(KERN_EMERG "cdev_add %d is fail! %d\n",index,err);
+	}
+	else{
+		printk(KERN_EMERG "cdev_add %d is success!\n",numdev_minor+index);
+	}
+}
+
+static int scdev_init(void)
+{
+	int ret = 0,i;
+	dev_t num_dev;
+	
+	
+	printk(KERN_EMERG "numdev_major is %d!\n",numdev_major);
+	printk(KERN_EMERG "numdev_minor is %d!\n",numdev_minor);
+	
+	if(numdev_major){
+		num_dev = MKDEV(numdev_major,numdev_minor);
+		ret = register_chrdev_region(num_dev,DEVICE_MINOR_NUM,DEVICE_NAME);
+	}
+	else{
+		/*动态注册设备号*/
+		ret = alloc_chrdev_region(&num_dev,numdev_minor,DEVICE_MINOR_NUM,DEVICE_NAME);
+		/*获得主设备号*/
+		numdev_major = MAJOR(num_dev);
+		printk(KERN_EMERG "adev_region req %d !\n",numdev_major);
+	}
+	if(ret<0){
+		printk(KERN_EMERG "register_chrdev_region req %d is failed!\n",numdev_major);		
+	}
+	myclass = class_create(THIS_MODULE,DEVICE_NAME);
+	
+	
+	my_devices = kmalloc(DEVICE_MINOR_NUM * sizeof(struct reg_dev),GFP_KERNEL);
+	if(!my_devices){
+		ret = -ENOMEM;
+		goto fail;
+	}
+	memset(my_devices,0,DEVICE_MINOR_NUM * sizeof(struct reg_dev));
+	
+	/*设备初始化*/
+	for(i=0;i<DEVICE_MINOR_NUM;i++){
+		my_devices[i].data = kmalloc(REGDEV_SIZE,GFP_KERNEL);
+		memset(my_devices[i].data,0,REGDEV_SIZE);
+		/*设备注册到系统*/
+		reg_init_cdev(&my_devices[i],i);
+		
+		/*创建设备节点*/
+		device_create(myclass,NULL,MKDEV(numdev_major,numdev_minor+i),NULL,DEVICE_NAME"%d",i);
+	}
+	
+		
+	printk(KERN_EMERG "scdev_init!\n");
+	/*打印信息，KERN_EMERG表示紧急信息*/
+	return 0;
+
+fail:
+	/*注销设备号*/
+	unregister_chrdev_region(MKDEV(numdev_major,numdev_minor),DEVICE_MINOR_NUM);
+	printk(KERN_EMERG "kmalloc is fail!\n");
+	
+	return ret;
+}
+
+static void scdev_exit(void)
+{
+	int i;
+	printk(KERN_EMERG "scdev_exit!\n");
+	
+	/*除去字符设备*/
+	for(i=0;i<DEVICE_MINOR_NUM;i++){
+		cdev_del(&(my_devices[i].cdev));
+		/*摧毁设备节点函数d*/
+		device_destroy(myclass,MKDEV(numdev_major,numdev_minor+i));
+	}
+	/*释放设备class*/
+	class_destroy(myclass);
+	/*释放内存*/
+	kfree(my_devices);
+	
+	unregister_chrdev_region(MKDEV(numdev_major,numdev_minor),DEVICE_MINOR_NUM);
+}
+
+
+module_init(scdev_init);
+/*初始化函数*/
+module_exit(scdev_exit);
+/*卸载函数*/
+
+
+
+Makefile文件：
+#!/bin/bash
+#通知编译器我们要编译模块的哪些源码
+obj-m += create_cnode.o 
+
+#源码目录变量，这里用户需要根据实际情况选择路径
+#作者是将Linux的源码拷贝到目录/home/topeet/android4.0下并解压的
+KDIR := /home/topeet/android4.0/iTop4412_Kernel_3.0
+
+#当前目录变量
+PWD ?= $(shell pwd)
+
+#make命名默认寻找第一个目标
+#make -C就是指调用执行的路径
+#$(KDIR)Linux源码目录，作者这里指的是/home/topeet/android4.0/iTop4412_Kernel_3.0
+#$(PWD)当前目录变量
+#modules要执行的操作
+all:
+	make -C $(KDIR) M=$(PWD) modules
+		
+#make clean执行的操作是删除后缀为o的文件
+clean:
+	rm -rf *.mod.c *.o *.order *.ko *.mod.o *.symvers
